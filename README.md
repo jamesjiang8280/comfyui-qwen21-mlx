@@ -28,17 +28,16 @@ ComfyUI 自带的 Qwen 节点跑 PyTorch/MPS；这里把扩散计算交给 MLX�
 
 ## 安装
 
-节点包已放在：
-
-```
-~/ComfyUI-Installs/ComfyUI/ComfyUI/custom_nodes/comfyui-qwen21-mlx/
+```bash
+cd ~/ComfyUI/custom_nodes
+git clone https://github.com/jamesjiang8280/comfyui-qwen21-mlx.git
 ```
 
 重启 ComfyUI（Desktop 里退出再开，或重启后端）后，节点出现在 **Qwen21 MLX** 分类下。
 
 ### mflux 解释器
 
-worker 需要独立的 mflux 环境（本机已有）：
+worker 需要独立的 mflux 环境（和 ComfyUI 的 python 分开，避免 `mlx`/`transformers` 版本冲突）：
 
 ```
 ~/mflux-venv/bin/python     # mflux 0.24.0 + mlx 0.32.4，已实测
@@ -59,7 +58,7 @@ bash custom_nodes/comfyui-qwen21-mlx/scripts/setup_env.sh
 
 ## 模型
 
-默认（也是本机已有）：
+推荐（含 Qwen3-VL 视觉塔，可做指令编辑）：
 
 ```
 ~/ComfyUI-Shared/models/MLX/JoyFusionAI__Qwen-Image-2.1-Edit-MLX-4bit   # 9.6GB, 4bit
