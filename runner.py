@@ -41,6 +41,24 @@ _LOCKS: dict[str, threading.Lock] = {}
 _REGISTRY_LOCK = threading.Lock()
 
 
+BAR_WIDTH = 24
+
+
+def render_progress(step: int, total: int, rate: float | None = None) -> str:
+    """One-line console progress bar; ``rate`` is seconds per step (None = warming up)."""
+    total = max(1, total)
+    step = max(0, min(step, total))
+    frac = step / total
+    filled = int(round(frac * BAR_WIDTH))
+    bar = "█" * filled + "░" * (BAR_WIDTH - filled)
+    if rate:
+        eta = max(0.0, rate * (total - step))
+        timing = f"{rate:4.1f}s/步  剩余 {eta:3.0f}s"
+    else:
+        timing = "预热中（首步含权重加载）"
+    return f"{bar} {step:>3}/{total:<3} {frac * 100:5.1f}%  {timing}"
+
+
 class Qwen21RunError(RuntimeError):
     """Raised when the MLX worker fails (missing weights, OOM, bad args...)."""
 
@@ -282,14 +300,25 @@ class Worker:
             raise Qwen21RunError(f"MLX worker 写入失败：{exc}\n{self._log_tail()}") from exc
 
         deadline = time.time() + 60 * 60  # a 40-step 2048² run can take a while
+        started = time.time()
+        first_step_at: float | None = None
+        last_total = 0
         announced: set[str] = set()
         while True:
             frame = self._next_frame(deadline, should_cancel)
             kind = frame.get("type")
 
             if kind == "progress":
+                step = int(frame.get("step", 0))
+                total = int(frame.get("total", 0))
+                now = time.time()
+                rate = (now - first_step_at) / (step - 1) if first_step_at and step > 1 else None
+                if first_step_at is None:
+                    first_step_at = now
+                last_total = max(last_total, total)
+                print(f"[qwen21-mlx] 采样 {render_progress(step, total, rate)}", flush=True)
                 if on_progress:
-                    on_progress(int(frame.get("step", 0)), int(frame.get("total", 0)))
+                    on_progress(step, total)
                 continue
 
             if kind == "status":
@@ -302,6 +331,9 @@ class Worker:
                 if phase not in announced:
                     announced.add(str(phase))
                     print(f"[qwen21-mlx] {label}", flush=True)
+                if phase == "decoding" and last_total and first_step_at:
+                    rate = (time.time() - first_step_at) / (last_total - 1) if last_total > 1 else None
+                    print(f"[qwen21-mlx] 采样 {render_progress(last_total, last_total, rate)}", flush=True)
                 continue
 
             if frame.get("id") not in (None, request_id):
