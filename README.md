@@ -24,7 +24,8 @@ ComfyUI 自带的 Qwen 节点跑 PyTorch/MPS；这里把扩散计算交给 MLX�
 | **Qwen-Image-2.1 MLX 模型加载器** | 扫描 `~/ComfyUI-Shared/models/MLX`，检测模型能力（是否含视觉塔），输出配置对象 |
 | **Qwen-Image-2.1 MLX 文生图** | prompt / 尺寸 / 步数 / seed → IMAGE，可选 step cache |
 | **Qwen-Image-2.1 MLX 图像编辑** | 1~10 张参考图 + 指令，可选 mask（auto_mask / 扩写 / 自检取决于权重是否有 lm_head），输出 IMAGE + alpha MASK |
-| **Qwen-Image-2.1 MLX LoRA 加载器** | 选 `models/loras` 下的 `.safetensors`，调强度/开关/是否烘焙，输回配置对象 |
+| **Qwen-Image-2.1 MLX LoRA 加载器** | 单个 LoRA：选 `models/loras` 下的 `.safetensors`，调强度/开关/是否烘焙 |
+| **Qwen-Image-2.1 MLX LoRA Stack** | 一个节点叠 4 个 LoRA（空槽=`none`），可串联多个 Stack 节点继续叠 |
 | **Qwen-Image-2.1 MLX 释放内存** | 停止常驻 worker，交还统一内存（换模型/跑别的负载前用） |
 
 ## 安装
@@ -72,8 +73,10 @@ bash custom_nodes/comfyui-qwen21-mlx/scripts/setup_env.sh
 - **lm_head 很重要**：这个 4bit 包只有 `visual.*` + `language_model.*`，没有 `lm_head`。
   指令编辑（图生图 + 指令）正常，但 `auto_mask` / `enhance_prompt` / `verify` 需要模型生成文本，
   用不了；编辑节点会在开始去噪前直接报错，而不是白跑一轮。局部修改请用手动 mask。
-- LoRA 用独立的 **LoRA 加载器** 节点：下拉来自 ComfyUI 的 `loras` 目录（含 extra_model_paths），
-  `strength` 调强度，`enabled` 做 A/B，`bake=false` 用运行时适配器（显存更省）。
+- LoRA 用独立的 **LoRA 加载器**（单个）或 **LoRA Stack**（最多 4 个槽）节点：下拉来自 ComfyUI 的
+  `loras` 目录（含 extra_model_paths），每个槽独立强度；`enabled` 做 A/B，`bake=false` 用运行时适配器
+  （显存更省）。同一节点里填多个槽就是一次加载多个 LoRA，worker 日志会逐个打印 `Applied to N layers`；
+  4 个槽不够时把两个 Stack 节点串起来即可。
 
 ## 工作流
 
@@ -83,8 +86,9 @@ user/default/workflows/Qwen Image 2.1 文生、图像编辑一体化.json
 
 节点包里也有一份：`custom_nodes/comfyui-qwen21-mlx/workflows/qwen_image_21_mlx.json`。
 
-- 两条链路共用一个加载器 / 一个常驻 worker；LoRA 节点串在加载器和两条分支之间。
-- 默认接 `Qwen-image-2.1-turbo8_lora_8step`，8 步出图；把 LoRA 的 `enabled` 关掉就是 40 步基础模型。
+- 两条链路共用一个加载器 / 一个常驻 worker；LoRA Stack 串在加载器和两条分支之间。
+- 默认在 Stack 的 `lora_1` 接 `Qwen-image-2.1-turbo8_lora_8step`，8 步出图；`lora_2~4` 空槽为 `none`，
+  可以再叠风格/画质 LoRA（记得同时调低各自 strength）。关掉 Stack 的 `enabled` 就是 40 步基础模型。
 - 文生图：1024²、8 步、guidance 1.0。
 - 编辑：参考图接 `image_1`，多图接 `image_2`~`image_10`；`width/height=0` 表示按参考图比例自动。
 - 局部修改：MASK 接 `mask`（白=重绘，黑=保留）。本权重不支持 `auto_mask`。

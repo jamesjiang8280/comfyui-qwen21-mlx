@@ -158,11 +158,13 @@ def load_model(args):
     lora_paths = None
     lora_scales = None
     if args.lora:
-        lora_path = Path(os.path.expanduser(args.lora[0]))
-        if not lora_path.is_file():
-            raise FileNotFoundError(f"LoRA 文件不存在：{lora_path}")
-        lora_paths = [str(lora_path)]
-        lora_scales = [float(args.lora[1])]
+        lora_paths, lora_scales = [], []
+        for raw_path, raw_scale in args.lora:
+            lora_path = Path(os.path.expanduser(raw_path))
+            if not lora_path.is_file():
+                raise FileNotFoundError(f"LoRA 文件不存在：{lora_path}")
+            lora_paths.append(str(lora_path))
+            lora_scales.append(float(raw_scale))
 
     started = time.time()
     emit(type="status", phase="loading", model=model_path, quantize=args.quantize)
@@ -282,10 +284,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache-limit-gb", type=float, default=0.0)
     parser.add_argument(
         "--lora",
+        action="append",
         nargs=2,
         metavar=("PATH", "SCALE"),
         default=None,
-        help="Optional LoRA (local .safetensors) merged into the weights at load time.",
+        help="Optional LoRA (local .safetensors) merged into the weights at load time. Repeatable.",
     )
     parser.add_argument(
         "--keep-text-encoder",

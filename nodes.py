@@ -64,7 +64,7 @@ except Exception:  # pragma: no cover
     folder_paths = None
 
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 CATEGORY = "Qwen21 MLX"
 QUANTS = ["auto", "4", "8"]
 SCHEDULERS = ["linear", "viggle_turbo"]
@@ -817,7 +817,7 @@ class Qwen21MlxLoraLoader:
     ) -> tuple[dict[str, Any]]:
         cfg = dict(qwen21_mlx_model or {})
         if not enabled or not (lora_name or "").strip():
-            for key in ("lora_path", "lora_scale", "lora_bake"):
+            for key in ("lora_paths", "lora_scales", "lora_bake"):
                 cfg.pop(key, None)
             print("[qwen21-mlx] LoRA 已禁用，直通基础模型", flush=True)
             return (cfg,)
@@ -826,10 +826,88 @@ class Qwen21MlxLoraLoader:
         if not path.is_file():
             raise Qwen21RunError(f"LoRA 文件不存在：{path}")
         scale = float(strength)
-        cfg.update(lora_path=str(path), lora_scale=scale, lora_bake=bool(bake))
+        cfg.update(lora_paths=[str(path)], lora_scales=[scale], lora_bake=bool(bake))
         print(
             f"[qwen21-mlx] LoRA: {path.name} (scale={scale}, "
             f"{'烘焙' if bake else '运行时适配器'}) -> worker 将重新加载模型",
+            flush=True,
+        )
+        return (cfg,)
+
+
+class Qwen21MlxLoraStack:
+    """Stack up to four LoRAs in one node; chain nodes for more."""
+
+    SLOTS = 4
+
+    @classmethod
+    def INPUT_TYPES(cls) -> dict[str, Any]:
+        choices = ["none"] + lora_options()
+        required: dict[str, Any] = {"qwen21_mlx_model": ("QWEN21_MLX_CONFIG",)}
+        for i in range(1, cls.SLOTS + 1):
+            required[f"lora_{i}"] = (
+                choices,
+                {"default": "none", "tooltip": f"第 {i} 个 LoRA；none = 空槽"},
+            )
+            required[f"strength_{i}"] = (
+                "FLOAT",
+                {"default": 1.0, "min": -4.0, "max": 4.0, "step": 0.05},
+            )
+        required["bake"] = (
+            "BOOLEAN",
+            {"default": False, "tooltip": "烘焙进权重：略快但 mflux 会把部分 4bit 层提到 8bit，显存更高"},
+        )
+        required["enabled"] = ("BOOLEAN", {"default": True, "tooltip": "关闭=整组直通，便于 A/B"})
+        return {"required": required}
+
+    RETURN_TYPES = ("QWEN21_MLX_CONFIG",)
+    RETURN_NAMES = ("qwen21_mlx_model",)
+    FUNCTION = "apply"
+    CATEGORY = CATEGORY
+
+    def apply(
+        self,
+        qwen21_mlx_model: dict[str, Any],
+        lora_1: str = "none",
+        strength_1: float = 1.0,
+        lora_2: str = "none",
+        strength_2: float = 1.0,
+        lora_3: str = "none",
+        strength_3: float = 1.0,
+        lora_4: str = "none",
+        strength_4: float = 1.0,
+        bake: bool = False,
+        enabled: bool = True,
+    ) -> tuple[dict[str, Any]]:
+        cfg = dict(qwen21_mlx_model or {})
+        if not enabled:
+            print("[qwen21-mlx] LoRA Stack 已禁用，直通上游配置", flush=True)
+            return (cfg,)
+
+        paths = [str(p) for p in (cfg.get("lora_paths") or [])]
+        scales = [float(s) for s in (cfg.get("lora_scales") or [])]
+        added: list[str] = []
+        for name, strength in (
+            (lora_1, strength_1),
+            (lora_2, strength_2),
+            (lora_3, strength_3),
+            (lora_4, strength_4),
+        ):
+            name = (name or "").strip()
+            if not name or name == "none":
+                continue
+            path = resolve_lora(name)
+            if not path.is_file():
+                raise Qwen21RunError(f"LoRA 文件不存在：{path}")
+            paths.append(str(path))
+            scales.append(float(strength))
+            added.append(f"{path.name}@{float(strength):g}")
+
+        cfg.update(lora_paths=paths, lora_scales=scales, lora_bake=bool(bake))
+        summary = ", ".join(f"{Path(p).name}@{s:g}" for p, s in zip(paths, scales)) or "无"
+        print(
+            f"[qwen21-mlx] LoRA Stack: {len(paths)} 个 ({summary}), "
+            f"{'烘焙' if bake else '运行时适配器'} -> worker 将重新加载模型",
             flush=True,
         )
         return (cfg,)
@@ -866,6 +944,7 @@ NODE_CLASS_MAPPINGS = {
     "Qwen21MlxTextToImage": Qwen21MlxTextToImage,
     "Qwen21MlxEdit": Qwen21MlxEdit,
     "Qwen21MlxLoraLoader": Qwen21MlxLoraLoader,
+    "Qwen21MlxLoraStack": Qwen21MlxLoraStack,
     "Qwen21MlxFreeMemory": Qwen21MlxFreeMemory,
 }
 
@@ -874,6 +953,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Qwen21MlxTextToImage": "Qwen-Image-2.1 MLX 文生图",
     "Qwen21MlxEdit": "Qwen-Image-2.1 MLX 图像编辑",
     "Qwen21MlxLoraLoader": "Qwen-Image-2.1 MLX LoRA 加载器",
+    "Qwen21MlxLoraStack": "Qwen-Image-2.1 MLX LoRA Stack",
     "Qwen21MlxFreeMemory": "Qwen-Image-2.1 MLX 释放内存",
 }
 

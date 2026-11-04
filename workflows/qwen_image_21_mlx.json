@@ -43,14 +43,14 @@
     },
     {
       "id": 2,
-      "type": "Qwen21MlxLoraLoader",
+      "type": "Qwen21MlxLoraStack",
       "pos": [
         40,
-        430
+        400
       ],
       "size": [
         460,
-        250
+        380
       ],
       "flags": {},
       "order": 1,
@@ -73,15 +73,21 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "Qwen21MlxLoraLoader"
+        "Node name for S&R": "Qwen21MlxLoraStack"
       },
       "widgets_values": [
         "qwen/Qwen-image-2.1-turbo8_lora_8step.safetensors",
         1.0,
-        true,
-        false
+        "none",
+        1.0,
+        "none",
+        1.0,
+        "none",
+        1.0,
+        false,
+        true
       ],
-      "title": "② LoRA（8 步 turbo，可关）"
+      "title": "② LoRA Stack（8 步 turbo，可叠 4 个）"
     },
     {
       "id": 3,
@@ -365,7 +371,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "Qwen-Image-2.1 MLX 一体化工作流\n\n• 文生图与编辑共用同一个常驻 MLX worker：首次加载权重约 1 分钟，之后每张免加载\n• 默认接 8 步 turbo LoRA（Qwen-image-2.1-turbo8_lora_8step）：1024² 约 1.5~2 分钟；\n  把 LoRA 节点的 enabled 关掉即回到 40 步基础模型（约 5.5~6 分钟）\n• 编辑：写清「改什么 + 保留什么」；strength 1.0 完全按指令重画，0.6~0.8 保留更多原图\n• 多参考图：接 image_2 ~ image_10（最多 10 张，最后一张决定输出比例）\n• 局部修改：把 MASK 接到 mask（白=重绘，黑=保留）\n• 只跑一条链路时，选中另一条分支按 Ctrl+M 静音，避免白跑一次生成"
+        "Qwen-Image-2.1 MLX 一体化工作流\n\n• 文生图与编辑共用同一个常驻 MLX worker：首次加载权重约 1 分钟，之后每张免加载\n• 默认接 8 步 turbo LoRA（Qwen-image-2.1-turbo8_lora_8step）：1024² 约 1.5~2 分钟；\n  把 LoRA Stack 的 enabled 关掉即回到 40 步基础模型（约 5.5~6 分钟）\n• LoRA Stack 一个节点最多 4 个槽（空槽=none）；要更多就再串一个 Stack 节点\n• 编辑：写清「改什么 + 保留什么」；strength 1.0 完全按指令重画，0.6~0.8 保留更多原图\n• 多参考图：接 image_2 ~ image_10（最多 10 张，最后一张决定输出比例）\n• 局部修改：把 MASK 接到 mask（白=重绘，黑=保留）\n• 只跑一条链路时，选中另一条分支按 Ctrl+M 静音，避免白跑一次生成"
       ]
     },
     {
@@ -388,7 +394,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "模型与能力\n\nJoyFusionAI/Qwen-Image-2.1-Edit-MLX-4bit（约 9.6GB，含 Qwen3-VL 视觉塔）\n路径：~/ComfyUI-Shared/models/MLX/\n\n• 只有 text_encoder 里带 visual.* 的 Edit 包才能做指令编辑\n• 这个 4bit 包没有 lm_head：指令编辑正常，但 auto_mask / enhance_prompt / verify\n  不可用（编辑节点会提前拦截并提示），局部修改请用手动 mask\n• 换 LoRA：改 LoRA 节点的 lora_name；bake=false 是运行时适配器，显存更省\n• 日志：custom_nodes/comfyui-qwen21-mlx/logs/worker-*.log"
+        "模型与能力\n\nJoyFusionAI/Qwen-Image-2.1-Edit-MLX-4bit（约 9.6GB，含 Qwen3-VL 视觉塔）\n路径：~/ComfyUI-Shared/models/MLX/\n\n• 只有 text_encoder 里带 visual.* 的 Edit 包才能做指令编辑\n• 这个 4bit 包没有 lm_head：指令编辑正常，但 auto_mask / enhance_prompt / verify\n  不可用（编辑节点会提前拦截并提示），局部修改请用手动 mask\n• 换 LoRA：改 LoRA Stack 的 lora_1~lora_4；bake=false 是运行时适配器，显存更省\n• 日志：custom_nodes/comfyui-qwen21-mlx/logs/worker-*.log"
       ]
     }
   ],
@@ -471,12 +477,12 @@
     },
     {
       "id": 3,
-      "title": "LoRA（可选）",
+      "title": "LoRA Stack（可选，可串联）",
       "bounding": [
         0,
-        400,
+        370,
         520,
-        300
+        430
       ],
       "color": "#4a6b3a",
       "font_size": 24,
