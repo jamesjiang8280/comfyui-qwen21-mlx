@@ -1,0 +1,435 @@
+{
+  "last_node_id": 8,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Qwen21MlxLoader",
+      "pos": [
+        40,
+        120
+      ],
+      "size": [
+        460,
+        320
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "qwen21_mlx_model",
+          "type": "QWEN21_MLX_CONFIG",
+          "links": [
+            1,
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Qwen21MlxLoader"
+      },
+      "widgets_values": [
+        "/Users/jamesjiang/ComfyUI-Shared/models/MLX/JoyFusionAI__Qwen-Image-2.1-Edit-MLX-4bit",
+        "auto",
+        true,
+        false,
+        false,
+        2,
+        "",
+        false,
+        "",
+        1.0
+      ],
+      "title": "① Qwen-Image-2.1 MLX（常驻）"
+    },
+    {
+      "id": 2,
+      "type": "Qwen21MlxTextToImage",
+      "pos": [
+        560,
+        100
+      ],
+      "size": [
+        440,
+        420
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "qwen21_mlx_model",
+          "type": "QWEN21_MLX_CONFIG",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Qwen21MlxTextToImage"
+      },
+      "widgets_values": [
+        "一位穿红色汉服的年轻女子站在樱花树下，午后柔光，电影感，细节丰富",
+        "",
+        1024,
+        1024,
+        40,
+        1.0,
+        42,
+        "linear",
+        true,
+        false,
+        0.12
+      ],
+      "title": "② 文生图"
+    },
+    {
+      "id": 3,
+      "type": "SaveImage",
+      "pos": [
+        1060,
+        140
+      ],
+      "size": [
+        420,
+        480
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "qwen21-mlx/t2i"
+      ],
+      "title": "保存（文生图）"
+    },
+    {
+      "id": 4,
+      "type": "Qwen21MlxEdit",
+      "pos": [
+        560,
+        620
+      ],
+      "size": [
+        520,
+        780
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "qwen21_mlx_model",
+          "type": "QWEN21_MLX_CONFIG",
+          "link": 3
+        },
+        {
+          "name": "image_1",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "image_2",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "image_3",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "image_4",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "image_5",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "image_6",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "image_7",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "image_8",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "image_9",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "image_10",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            5
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Qwen21MlxEdit"
+      },
+      "widgets_values": [
+        "把外套改成黑色皮衣，保持人物身份、姿势和背景不变",
+        "",
+        0,
+        0,
+        40,
+        1.0,
+        1.0,
+        "linear",
+        42,
+        "",
+        true,
+        false,
+        0.12,
+        false,
+        false,
+        1,
+        1024
+      ],
+      "title": "③ 图像编辑（指令 + 参考图）"
+    },
+    {
+      "id": 5,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        620
+      ],
+      "size": [
+        440,
+        560
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            4
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "title": "参考图（可换）"
+    },
+    {
+      "id": 6,
+      "type": "SaveImage",
+      "pos": [
+        1140,
+        660
+      ],
+      "size": [
+        420,
+        480
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 5
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "qwen21-mlx/edit"
+      ],
+      "title": "保存（编辑）"
+    },
+    {
+      "id": 7,
+      "type": "Note",
+      "pos": [
+        40,
+        1240
+      ],
+      "size": [
+        640,
+        300
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "Qwen-Image-2.1 MLX 一体化工作流\n\n• 文生图与编辑共用同一个常驻 MLX worker：首次运行加载 4bit 权重约 1 分钟，之后每张免加载\n• 文生图：1024² / 40 步（官方设计点，guidance 保持 1.0）；M5 24GB 约 8~9 秒/步\n• 编辑：写清「改什么 + 保留什么」；strength 1.0 完全按指令重画，0.6~0.8 保留更多原图\n• 多参考图：接 image_2 ~ image_10（最多 10 张，最后一张决定输出比例）\n• 局部修改：把 MASK 接到 mask（白=重绘，黑=保留），与 auto_mask 二选一\n• 显存吃紧：加载器里打开 low_ram / vae_tiling；想立刻释放模型，用「释放内存」节点\n• 只跑一条链路时，选中另一条分支按 Ctrl+M 静音，避免白跑一次生成"
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Note",
+      "pos": [
+        720,
+        1240
+      ],
+      "size": [
+        560,
+        300
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "模型与能力\n\nJoyFusionAI/Qwen-Image-2.1-Edit-MLX-4bit（约 9.6GB，含 Qwen3-VL 视觉塔）\n路径：~/ComfyUI-Shared/models/MLX/\n\n• 只有 text_encoder 里带 visual.* 的 Edit 包才能做指令编辑；\n  纯文生图包会被编辑节点拒绝\n• auto_mask / enhance_prompt / verify 会额外跑 Qwen3-VL，明显更慢\n• 首次运行日志：custom_nodes/comfyui-qwen21-mlx/logs/worker-*.log"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "QWEN21_MLX_CONFIG"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      1,
+      0,
+      4,
+      0,
+      "QWEN21_MLX_CONFIG"
+    ],
+    [
+      4,
+      5,
+      0,
+      4,
+      1,
+      "IMAGE"
+    ],
+    [
+      5,
+      4,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "文生图（T2I）",
+      "bounding": [
+        520,
+        20,
+        980,
+        620
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "图像编辑（1~10 张参考图 + 可选 mask）",
+      "bounding": [
+        0,
+        540,
+        1600,
+        900
+      ],
+      "color": "#8a5a3c",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.72,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}
