@@ -172,7 +172,7 @@ def load_model(args):
         model_config=model_config,
         lora_paths=lora_paths,
         lora_scales=lora_scales,
-        bake_lora=True,
+        bake_lora=not getattr(args, "no_bake_lora", False),
     )
 
     # Optional memory shaping.  The weights stay resident, but MLX's buffer cache
@@ -292,6 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Keep the 4.8 GB Qwen3-VL encoder resident (slower, higher peak; default is release after encoding).",
     )
+    parser.add_argument("--no-bake-lora", action="store_true", help="Keep LoRA as runtime adapters instead of folding it into the weights.")
     parser.add_argument("--verbose", action="store_true")
     return parser
 

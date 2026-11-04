@@ -162,6 +162,8 @@ class Worker:
             args.append("--low-ram")
         if cfg.get("lora_path"):
             args += ["--lora", str(cfg["lora_path"]), str(cfg.get("lora_scale", 1.0) or 1.0)]
+            if not cfg.get("lora_bake", False):
+                args.append("--no-bake-lora")
         if cfg.get("verbose"):
             args.append("--verbose")
         return args
@@ -360,6 +362,7 @@ def _key(cfg: dict[str, Any]) -> str:
             str(cfg.get("cache_limit_gb", 2)),
             str(cfg.get("lora_path") or ""),
             str(cfg.get("lora_scale") or ""),
+            str(bool(cfg.get("lora_bake"))),
         ]
     )
 

@@ -23,7 +23,8 @@ ComfyUI 自带的 Qwen 节点跑 PyTorch/MPS；这里把扩散计算交给 MLX�
 | --- | --- |
 | **Qwen-Image-2.1 MLX 模型加载器** | 扫描 `~/ComfyUI-Shared/models/MLX`，检测模型能力（是否含视觉塔），输出配置对象 |
 | **Qwen-Image-2.1 MLX 文生图** | prompt / 尺寸 / 步数 / seed → IMAGE，可选 step cache |
-| **Qwen-Image-2.1 MLX 图像编辑** | 1~10 张参考图 + 指令，可选 mask / auto_mask / prompt 扩写 / 自检，输出 IMAGE + alpha MASK |
+| **Qwen-Image-2.1 MLX 图像编辑** | 1~10 张参考图 + 指令，可选 mask（auto_mask / 扩写 / 自检取决于权重是否有 lm_head），输出 IMAGE + alpha MASK |
+| **Qwen-Image-2.1 MLX LoRA 加载器** | 选 `models/loras` 下的 `.safetensors`，调强度/开关/是否烘焙，输回配置对象 |
 | **Qwen-Image-2.1 MLX 释放内存** | 停止常驻 worker，交还统一内存（换模型/跑别的负载前用） |
 
 ## 安装
@@ -68,8 +69,11 @@ bash custom_nodes/comfyui-qwen21-mlx/scripts/setup_env.sh
   同时有 `visual.*` 与 `language_model.*` 才是完整 **Edit** 包；
   只有语言模型的包只能文生图 / 普通重绘，编辑节点会直接报错而不是假装能编辑。
 - `quantization=auto` 表示沿用权重自带的量化元数据。**已经是 Q4 的包不要再选 4**。
-- 可选 LoRA：加载器最下面的 `lora_path` 填本地 `.safetensors`（如 2.1 Lightning 少步加速包），
-  加载时烘焙进权重；不同 LoRA 会各起一个 worker。
+- **lm_head 很重要**：这个 4bit 包只有 `visual.*` + `language_model.*`，没有 `lm_head`。
+  指令编辑（图生图 + 指令）正常，但 `auto_mask` / `enhance_prompt` / `verify` 需要模型生成文本，
+  用不了；编辑节点会在开始去噪前直接报错，而不是白跑一轮。局部修改请用手动 mask。
+- LoRA 用独立的 **LoRA 加载器** 节点：下拉来自 ComfyUI 的 `loras` 目录（含 extra_model_paths），
+  `strength` 调强度，`enabled` 做 A/B，`bake=false` 用运行时适配器（显存更省）。
 
 ## 工作流
 
@@ -79,10 +83,11 @@ user/default/workflows/Qwen Image 2.1 文生、图像编辑一体化.json
 
 节点包里也有一份：`custom_nodes/comfyui-qwen21-mlx/workflows/qwen_image_21_mlx.json`。
 
-- 两条链路共用一个加载器 / 一个常驻 worker。
-- 文生图：1024²、40 步、guidance 1.0。
+- 两条链路共用一个加载器 / 一个常驻 worker；LoRA 节点串在加载器和两条分支之间。
+- 默认接 `Qwen-image-2.1-turbo8_lora_8step`，8 步出图；把 LoRA 的 `enabled` 关掉就是 40 步基础模型。
+- 文生图：1024²、8 步、guidance 1.0。
 - 编辑：参考图接 `image_1`，多图接 `image_2`~`image_10`；`width/height=0` 表示按参考图比例自动。
-- 局部修改：MASK 接 `mask`（白=重绘，黑=保留）。`auto_mask` 填一句物体描述让 Qwen3-VL 自己定位。
+- 局部修改：MASK 接 `mask`（白=重绘，黑=保留）。本权重不支持 `auto_mask`。
 - `strength=1.0` 完全按指令重画；`0.6~0.8` 保留更多原图，同时跳过前段高噪声步数（更快）。
 
 ## 实测（M5 / 24GB，4bit，磁盘缓存已热）
@@ -93,14 +98,16 @@ user/default/workflows/Qwen Image 2.1 文生、图像编辑一体化.json
 | 1024² 编辑 2 步（1 张参考图，含首次加载） | 40.2 s | 10.2 GB |
 | 1024² 编辑 2 步（第二次请求，复用 transformer） | 39.7 s | 13.9 GB |
 | 768² 编辑 2 步（经 ComfyUI 完整链路） | 28.6 s | 13.6 GB |
+| 512² 编辑 8 步 + turbo8 LoRA（含加载） | 34.8 s | 11.6 GB |
+| 1024² 编辑 8 步 + turbo8 LoRA（含编码器重载） | 104 s | 11.6 GB |
 | 参考：原 PyTorch/MPS 一体工作流 40 步 | 6 min 34 s | — |
 
-稳态约 **8.4 s/步 @1024²**（第 1 步含权重/编码开销），40 步约 **5.5~6 分钟**。
-提速手段，按性价比排序：
+基础模型稳态约 **8.4 s/步 @1024²**（第 1 步含权重/编码开销），40 步约 **5.5~6 分钟**；
+接 turbo8 LoRA 后 8 步约 **1 分 45 秒**。提速手段，按性价比排序：
 
-1. `strength=0.7~0.8`：跳过前 20~30% 的步数，重绘类任务几乎无损；
-2. `use_step_cache=True`（≥10 步才生效）：约 1.4x，画面有轻微差异；
-3. 换 Lightning / Viggle 蒸馏 LoRA，6~8 步收工（需要自备权重）；
+1. 用 **LoRA 加载器** 接 8 步蒸馏 LoRA（本机已验证 `Qwen-image-2.1-turbo8_lora_8step`，227/227 层匹配）；
+2. `strength=0.7~0.8`：跳过前 20~30% 的步数，重绘类任务几乎无损；
+3. `use_step_cache=True`（≥10 步才生效）：约 1.4x，画面有轻微差异；
 4. 降到 768² 出图再放大。
 
 ## 两个关键设计
@@ -131,6 +138,8 @@ custom_nodes/comfyui-qwen21-mlx/logs/worker-<模型名>.log
 | 首次生成特别慢（1~2 分钟） | 正常：权重首次从磁盘载入；之后再生成走常驻 worker |
 | 内存告警 / 系统卡顿 | 加载器打开 `low_ram` 或 `vae_tiling`，`cache_limit_gb` 设 2~4；或先跑「释放内存」节点 |
 | 编辑节点报“没有视觉塔” | 换完整 Edit 包（`text_encoder` 内含 `visual.*`） |
+| 报 `no text-encoder lm_head` | 该权重缺 Qwen3-VL 的文本生成头：关掉 auto_mask / enhance_prompt / verify，或改用手动 mask |
+| LoRA 不生效/层匹配少 | 确认是 Qwen-Image-2.1 的 diffusers 键名 LoRA；mflux 日志会打印 `Applied to N layers` |
 | 中断后下一张变慢 | 中断会杀掉 worker，下次重新加载；属预期 |
 | `mask` 没效果 | 确认白色=要改的区域；`mask` 与 `auto_mask` 同时接时 mflux 只用 mask |
 
@@ -139,6 +148,7 @@ custom_nodes/comfyui-qwen21-mlx/logs/worker-<模型名>.log
 - 每个模型配置同一时刻只跑一个请求（节点内加锁串行），并发队列会排队。
 - 输入是 batch 时只取第一帧作为参考图。
 - 输出是 RGBA：`image` 是白底合成后的 RGB，透明通道在第二个输出 `alpha`（MASK）。
-- `enhance_prompt` / `verify` / `auto_mask` 会额外跑 Qwen3-VL，明显更慢；`verify` 期间编码器不会释放。
-- LoRA 分支按 mflux 的 `QwenImage21Edit(lora_paths=...)` 接口实现，本机没有 LoRA 权重，未做端到端实测。
+- `enhance_prompt` / `verify` / `auto_mask` 需要 lm_head；本机这个 4bit 包没有，节点会提前拦截。
+- LoRA 烘焙（`bake=true`）会把被折叠加固的 4bit 层提到 8bit，显存明显变高（512² 实测峰值 16.1GB vs
+  运行时适配器 11.6GB），默认不烘焙。
 - 依赖 mflux 的 Qwen-Image-2.1 实现（0.24 实测）；升级 mflux 后若内部接口变动，需要同步 `worker.py` 的重载逻辑。

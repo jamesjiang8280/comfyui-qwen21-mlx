@@ -64,7 +64,7 @@ except Exception:  # pragma: no cover
     folder_paths = None
 
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 CATEGORY = "Qwen21 MLX"
 QUANTS = ["auto", "4", "8"]
 SCHEDULERS = ["linear", "viggle_turbo"]
@@ -142,17 +142,25 @@ def _is_qwen21_snapshot(path: Path) -> bool:
         return False
 
 
-def model_capability(path: Path) -> str:
-    """``edit`` when the text encoder carries the Qwen3-VL visual tower."""
+def model_capability(path: Path) -> tuple[str, bool]:
+    """``(capability, vision_chat)`` for a text encoder index.
+
+    ``edit`` needs the Qwen3-VL visual tower (visual.* + language_model.*).
+    ``vision_chat`` needs ``lm_head``, which powers auto_mask, prompt rewriting
+    and verify.  Some 4-bit exports drop lm_head, so instruction editing still
+    works but those three extras cannot run -- the edit node checks this before
+    spending a full denoise.
+    """
     index_path = path / "text_encoder" / "model.safetensors.index.json"
     try:
         weight_map = json.loads(index_path.read_text(encoding="utf-8")).get("weight_map", {})
     except Exception:
-        return "txt2img"
+        return "txt2img", False
     keys = weight_map.keys()
     has_visual = any(k.startswith("visual.") for k in keys)
     has_language = any(k.startswith("language_model.") for k in keys)
-    return "edit" if has_visual and has_language else "txt2img"
+    has_lm_head = any(k.startswith("lm_head.") for k in keys)
+    return ("edit" if has_visual and has_language else "txt2img"), has_lm_head
 
 
 def model_options() -> list[str]:
@@ -179,7 +187,7 @@ def default_model_value() -> str:
             (4 if "2.1" in name else 0)
             + (2 if "edit" in name else 0)
             + (2 if ("4bit" in name or "-q4" in name) else 0)
-            + (1 if model_capability(Path(path)) == "edit" else 0)
+            + (1 if model_capability(Path(path))[0] == "edit" else 0)
         )
     return max(opts, key=score)
 
@@ -265,6 +273,43 @@ def _cancel_check():
     return should_cancel
 
 
+LORA_EXTS = (".safetensors", ".sft")
+
+
+def lora_options() -> list[str]:
+    """LoRA files ComfyUI knows about (including its extra_model_paths)."""
+    names: list[str] = []
+    if folder_paths is not None:
+        try:
+            names = [n for n in folder_paths.get_filename_list("loras") if n.lower().endswith(LORA_EXTS)]
+        except Exception:
+            names = []
+    if not names:
+        root = Path.home() / "ComfyUI-Shared" / "models" / "loras"
+        if root.is_dir():
+            names = [str(p.relative_to(root)) for p in root.rglob("*") if p.suffix.lower() in LORA_EXTS]
+    return sorted(names, key=str.lower) or [""]
+
+
+def resolve_lora(name: str) -> Path:
+    name = (name or "").strip()
+    if not name:
+        raise Qwen21RunError("没有选择 LoRA 文件。")
+    if folder_paths is not None:
+        try:
+            full = folder_paths.get_full_path("loras", name)
+            if full and Path(full).is_file():
+                return Path(full)
+        except Exception:
+            pass
+    candidate = Path(os.path.expanduser(name))
+    if not candidate.is_absolute():
+        candidate = Path.home() / "ComfyUI-Shared" / "models" / "loras" / name
+    if not candidate.is_file():
+        raise Qwen21RunError(f"LoRA 文件不存在：{candidate}")
+    return candidate
+
+
 # ------------------------------------------------------------------ nodes ---
 
 
@@ -312,14 +357,6 @@ class Qwen21MlxLoader:
                     {"default": "", "tooltip": "手动指定快照绝对路径（优先于上面的下拉）"},
                 ),
                 "verbose": ("BOOLEAN", {"default": False, "tooltip": "把 worker 的全部日志打到 ComfyUI 控制台"}),
-                "lora_path": (
-                    "STRING",
-                    {"default": "", "tooltip": "可选：本地 .safetensors LoRA（如 2.1 Lightning 少步加速包），留空=不用"},
-                ),
-                "lora_scale": (
-                    "FLOAT",
-                    {"default": 1.0, "min": -4.0, "max": 4.0, "step": 0.05, "tooltip": "LoRA 强度；加载时烘焙进权重"},
-                ),
             },
         }
 
@@ -338,8 +375,6 @@ class Qwen21MlxLoader:
         cache_limit_gb: int = 2,
         model_path_override: str = "",
         verbose: bool = False,
-        lora_path: str = "",
-        lora_scale: float = 1.0,
     ) -> tuple[dict[str, Any]]:
         model = _as_str(model, "", "model").strip()
         override = _as_str(model_path_override, "", "model_path_override").strip()
@@ -349,12 +384,6 @@ class Qwen21MlxLoader:
             _fix("quantization", f"{quantization!r} -> auto")
             quantization = "auto"
         cache_limit_gb = _as_int(cache_limit_gb, 2, 0, 64, "cache_limit_gb")
-        lora = _as_str(lora_path, "", "lora_path").strip()
-        if lora:
-            lora_file = Path(os.path.expanduser(lora))
-            if not lora_file.is_file():
-                raise Qwen21RunError(f"LoRA 文件不存在：{lora_file}")
-            lora = str(lora_file)
         _report_fixes()
 
         cfg = {
@@ -365,22 +394,26 @@ class Qwen21MlxLoader:
             "low_ram": bool(low_ram),
             "vae_tiling": bool(vae_tiling or low_ram),
             "cache_limit_gb": cache_limit_gb,
-            "lora_path": lora,
-            "lora_scale": float(lora_scale),
             "verbose": bool(verbose),
             "python": find_python(),
         }
 
         path = _resolve_model(cfg)
-        capability = model_capability(path)
-        cfg.update(model=str(path), capability=capability, label=path.name)
+        capability, vision_chat = model_capability(path)
+        cfg.update(model=str(path), capability=capability, vision_chat=vision_chat, label=path.name)
 
         print(
             f"[qwen21-mlx] v{VERSION} | model={path.name} | capability={capability} | "
-            f"quant={quantization} | resident={bool(keep_resident)} | "
-            f"lora={Path(lora).name if lora else '-'} | python={cfg['python']}",
+            f"vision_chat={'yes' if vision_chat else 'no'} | "
+            f"quant={quantization} | resident={bool(keep_resident)} | python={cfg['python']}",
             flush=True,
         )
+        if not vision_chat:
+            print(
+                "[qwen21-mlx] 该权重缺 text_encoder 的 lm_head：指令编辑可用，"
+                "但 auto_mask / enhance_prompt / verify 不可用（节点会提前拦截）。",
+                flush=True,
+            )
         if capability != "edit":
             print(
                 "[qwen21-mlx] 该包缺少 Qwen3-VL 视觉塔（visual.*），只能文生图/普通重绘；"
@@ -416,7 +449,10 @@ class Qwen21MlxTextToImage:
                     "FLOAT",
                     {"default": 1.0, "min": 1.0, "max": 20.0, "step": 0.1, "tooltip": "Qwen-Image-2.1 是 guidance 蒸馏模型，保持 1.0"},
                 ),
-                "seed": ("INT", {"default": 42, "min": 0, "max": 2**31 - 1, "step": 1}),
+                "seed": (
+                    "INT",
+                    {"default": 42, "min": 0, "max": 2**31 - 1, "step": 1, "control_after_generate": True},
+                ),
                 "scheduler": (SCHEDULERS, {"default": "linear", "tooltip": "linear=Euler；viggle_turbo 需配 6 步 + 蒸馏 LoRA"}),
                 "use_kv_cache": ("BOOLEAN", {"default": True, "tooltip": "复用文本/参考图前缀注意力，默认开"}),
                 "use_step_cache": ("BOOLEAN", {"default": False, "tooltip": "跳步缓存，更快但输出略有差异；10 步以下不生效"}),
@@ -566,7 +602,10 @@ class Qwen21MlxEdit:
                     {"default": 1.0, "min": 0.05, "max": 1.0, "step": 0.05, "tooltip": "1.0=完全按指令重画；0.6~0.8=保留更多原图，且更省步数"},
                 ),
                 "scheduler": (SCHEDULERS, {"default": "linear"}),
-                "seed": ("INT", {"default": 42, "min": 0, "max": 2**31 - 1, "step": 1}),
+                "seed": (
+                    "INT",
+                    {"default": 42, "min": 0, "max": 2**31 - 1, "step": 1, "control_after_generate": True},
+                ),
             },
             "optional": optional_inputs,
         }
@@ -621,6 +660,21 @@ class Qwen21MlxEdit:
         auto_mask = _as_str(auto_mask, "", "auto_mask").strip()
         if not prompt.strip():
             raise Qwen21RunError("prompt 为空：请写下要做的编辑。")
+
+        chat_used = []
+        if auto_mask and mask is None:
+            chat_used.append("auto_mask")
+        if enhance_prompt:
+            chat_used.append("enhance_prompt")
+        if verify:
+            chat_used.append("verify")
+        if chat_used and not cfg.get("vision_chat"):
+            raise Qwen21RunError(
+                "当前权重缺少 text_encoder 的 lm_head，无法运行 " + " / ".join(chat_used) + "。\n"
+                "这是 4bit 导出时裁掉了 Qwen3-VL 的文本生成头：指令编辑本身正常，"
+                "但 auto_mask / enhance_prompt / verify 要靠它生成文本。\n"
+                "处理：关闭这些选项；局部修改改用手动 mask（白=重绘，黑=保留）。"
+            )
 
         strength = float(strength)
         if not 0.0 < strength <= 1.0:
@@ -722,6 +776,65 @@ class Qwen21MlxEdit:
                     pass
 
 
+class Qwen21MlxLoraLoader:
+    """Attach a Qwen-Image-2.1 LoRA to a config (baked or as runtime adapters)."""
+
+    @classmethod
+    def INPUT_TYPES(cls) -> dict[str, Any]:
+        return {
+            "required": {
+                "qwen21_mlx_model": ("QWEN21_MLX_CONFIG",),
+                "lora_name": (
+                    lora_options(),
+                    {
+                        "default": next((n for n in lora_options() if "2.1" in n and ("turbo" in n or "light" in n)), ""),
+                        "tooltip": "~/ComfyUI-Shared/models/loras 下的 .safetensors；8 步 turbo LoRA 能把 40 步降到 8 步",
+                    },
+                ),
+                "strength": ("FLOAT", {"default": 1.0, "min": -4.0, "max": 4.0, "step": 0.05}),
+                "enabled": ("BOOLEAN", {"default": True, "tooltip": "关闭=直通，便于 A/B 对比"}),
+            },
+            "optional": {
+                "bake": (
+                    "BOOLEAN",
+                    {"default": False, "tooltip": "烘焙进权重：省一点运行开销，但 mflux 会把被折叠加固的 4bit 层提到 8bit，显存明显变高"},
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("QWEN21_MLX_CONFIG",)
+    RETURN_NAMES = ("qwen21_mlx_model",)
+    FUNCTION = "apply"
+    CATEGORY = CATEGORY
+
+    def apply(
+        self,
+        qwen21_mlx_model: dict[str, Any],
+        lora_name: str,
+        strength: float = 1.0,
+        enabled: bool = True,
+        bake: bool = False,
+    ) -> tuple[dict[str, Any]]:
+        cfg = dict(qwen21_mlx_model or {})
+        if not enabled or not (lora_name or "").strip():
+            for key in ("lora_path", "lora_scale", "lora_bake"):
+                cfg.pop(key, None)
+            print("[qwen21-mlx] LoRA 已禁用，直通基础模型", flush=True)
+            return (cfg,)
+
+        path = resolve_lora(lora_name)
+        if not path.is_file():
+            raise Qwen21RunError(f"LoRA 文件不存在：{path}")
+        scale = float(strength)
+        cfg.update(lora_path=str(path), lora_scale=scale, lora_bake=bool(bake))
+        print(
+            f"[qwen21-mlx] LoRA: {path.name} (scale={scale}, "
+            f"{'烘焙' if bake else '运行时适配器'}) -> worker 将重新加载模型",
+            flush=True,
+        )
+        return (cfg,)
+
+
 class Qwen21MlxFreeMemory:
     """Stop the resident MLX worker(s) and release unified memory."""
 
@@ -752,6 +865,7 @@ NODE_CLASS_MAPPINGS = {
     "Qwen21MlxLoader": Qwen21MlxLoader,
     "Qwen21MlxTextToImage": Qwen21MlxTextToImage,
     "Qwen21MlxEdit": Qwen21MlxEdit,
+    "Qwen21MlxLoraLoader": Qwen21MlxLoraLoader,
     "Qwen21MlxFreeMemory": Qwen21MlxFreeMemory,
 }
 
@@ -759,6 +873,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Qwen21MlxLoader": "Qwen-Image-2.1 MLX 模型加载器",
     "Qwen21MlxTextToImage": "Qwen-Image-2.1 MLX 文生图",
     "Qwen21MlxEdit": "Qwen-Image-2.1 MLX 图像编辑",
+    "Qwen21MlxLoraLoader": "Qwen-Image-2.1 MLX LoRA 加载器",
     "Qwen21MlxFreeMemory": "Qwen-Image-2.1 MLX 释放内存",
 }
 
