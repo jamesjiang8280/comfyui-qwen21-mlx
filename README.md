@@ -145,6 +145,7 @@ custom_nodes/comfyui-qwen21-mlx/logs/worker-<模型名>.log
 | 报 `no text-encoder lm_head` | 该权重缺 Qwen3-VL 的文本生成头：关掉 auto_mask / enhance_prompt / verify，或改用手动 mask |
 | LoRA 不生效/层匹配少 | 确认是 Qwen-Image-2.1 的 diffusers 键名 LoRA；mflux 日志会打印 `Applied to N layers` |
 | 中断后下一张变慢 | 中断会杀掉 worker，下次重新加载；属预期 |
+| 报 `auto_mask / verify` 不可用 | 多半是旧工作流 widget 错位（`auto_mask` 里出现 true/false）：1.2.1 会自动还原并在控制台提示，重新打开最新工作流即可彻底消除 |
 | `mask` 没效果 | 确认白色=要改的区域；`mask` 与 `auto_mask` 同时接时 mflux 只用 mask |
 
 ## 已知限制
@@ -153,6 +154,8 @@ custom_nodes/comfyui-qwen21-mlx/logs/worker-<模型名>.log
 - 输入是 batch 时只取第一帧作为参考图。
 - 输出是 RGBA：`image` 是白底合成后的 RGB，透明通道在第二个输出 `alpha`（MASK）。
 - `enhance_prompt` / `verify` / `auto_mask` 需要 lm_head；本机这个 4bit 包没有，节点会提前拦截。
+- 步数最少 2（Qwen-Image-2.1 的 sigma 位移要求），填 1 会被自动改成 2。
+- 旧版工作流（widget 错位）会自动还原参数并照常生成，但界面上的勾选状态仍可能是错的，建议重新打开当前工作流。
 - LoRA 烘焙（`bake=true`）会把被折叠加固的 4bit 层提到 8bit，显存明显变高（512² 实测峰值 16.1GB vs
   运行时适配器 11.6GB），默认不烘焙。
 - 依赖 mflux 的 Qwen-Image-2.1 实现（0.24 实测）；升级 mflux 后若内部接口变动，需要同步 `worker.py` 的重载逻辑。

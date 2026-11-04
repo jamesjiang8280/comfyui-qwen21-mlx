@@ -64,7 +64,7 @@ except Exception:  # pragma: no cover
     folder_paths = None
 
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 CATEGORY = "Qwen21 MLX"
 QUANTS = ["auto", "4", "8"]
 SCHEDULERS = ["linear", "viggle_turbo"]
@@ -111,6 +111,54 @@ def _as_str(value: Any, default: str, name: str, allow_numbers: bool = False) ->
         return str(value)
     _fix(name, f"str expected, got {value!r} -> default")
     return default
+
+
+def _repair_stale_edit_widgets(
+    auto_mask, use_kv_cache, use_step_cache, step_cache_threshold, enhance_prompt, verify, verify_retries
+):
+    """Recover from workflows saved with the pre-1.1 widget order.
+
+    Before 1.1 the node did not declare ``control_after_generate`` on ``seed``.
+    ComfyUI's frontend still inserts that hidden widget, so a saved 17-value
+    workflow was mapped onto 18 widgets: every option after ``seed`` shifted one
+    slot left and the last one was clamped to its max.  The tell-tale is
+    ``auto_mask`` holding a bool (it is a STRING widget).  Shift the values back
+    instead of failing, and tell the user to reopen the current workflow.
+    """
+    stale = isinstance(auto_mask, bool) or (
+        isinstance(auto_mask, str) and auto_mask.strip().lower() in ("true", "false")
+    )
+    if not stale:
+        return auto_mask, use_kv_cache, use_step_cache, step_cache_threshold, enhance_prompt, verify, verify_retries
+
+    kv = auto_mask if isinstance(auto_mask, bool) else auto_mask.strip().lower() == "true"
+    step = bool(use_kv_cache)
+    threshold = float(use_step_cache) if isinstance(use_step_cache, (int, float)) and not isinstance(use_step_cache, bool) else 0.12
+    enhance = bool(step_cache_threshold)
+    verify_flag = bool(enhance_prompt)
+    retries = int(verify) if isinstance(verify, (int, float)) else 0  # bool is int: True -> 1
+    print(
+        "[qwen21-mlx] 检测到旧版工作流的 widget 顺序（参数错位），已自动还原："
+        f"auto_mask=关闭, use_kv_cache={kv}, use_step_cache={step}, "
+        f"threshold={threshold:.2f}, verify={verify_flag}, verify_retries={max(0, min(5, retries))}。"
+        " 建议重新打开磁盘上的最新工作流。",
+        flush=True,
+    )
+    return "", kv, step, max(0.0, min(1.0, threshold)), enhance, verify_flag, max(0, min(5, retries))
+
+
+def _repair_stale_t2i_widgets(scheduler, use_kv_cache, use_step_cache, step_cache_threshold):
+    if isinstance(scheduler, str):
+        return scheduler, use_kv_cache, use_step_cache, step_cache_threshold
+    kv = bool(scheduler)
+    step = bool(use_kv_cache)
+    threshold = float(use_step_cache) if isinstance(use_step_cache, (int, float)) and not isinstance(use_step_cache, bool) else 0.12
+    print(
+        "[qwen21-mlx] 文生图节点检测到旧版 widget 顺序，已自动还原（scheduler=linear）。"
+        " 建议重新打开磁盘上的最新工作流。",
+        flush=True,
+    )
+    return "linear", kv, step, max(0.0, min(1.0, threshold))
 
 
 def _snap32(value: int, name: str) -> int:
@@ -487,7 +535,13 @@ class Qwen21MlxTextToImage:
         width = _snap32(_as_int(width, 1024, 256, 2048, "width"), "width")
         height = _snap32(_as_int(height, 1024, 256, 2048, "height"), "height")
         steps = _as_int(steps, 40, 1, 100, "steps")
+        if steps < 2:
+            _fix("steps", f"{steps} -> 2（Qwen-Image-2.1 至少 2 步）")
+            steps = 2
         seed = _as_int(seed, 42, 0, 2**31 - 1, "seed")
+        scheduler, use_kv_cache, use_step_cache, step_cache_threshold = _repair_stale_t2i_widgets(
+            scheduler, use_kv_cache, use_step_cache, step_cache_threshold
+        )
         if scheduler not in SCHEDULERS:
             _fix("scheduler", f"{scheduler!r} -> linear")
             scheduler = "linear"
@@ -657,6 +711,17 @@ class Qwen21MlxEdit:
 
         prompt = _as_str(prompt, "", "prompt", allow_numbers=True)
         negative_prompt = _as_str(negative_prompt, "", "negative_prompt")
+        (
+            auto_mask,
+            use_kv_cache,
+            use_step_cache,
+            step_cache_threshold,
+            enhance_prompt,
+            verify,
+            verify_retries,
+        ) = _repair_stale_edit_widgets(
+            auto_mask, use_kv_cache, use_step_cache, step_cache_threshold, enhance_prompt, verify, verify_retries
+        )
         auto_mask = _as_str(auto_mask, "", "auto_mask").strip()
         if not prompt.strip():
             raise Qwen21RunError("prompt 为空：请写下要做的编辑。")
@@ -681,6 +746,9 @@ class Qwen21MlxEdit:
             _fix("strength", f"{strength} -> 1.0")
             strength = 1.0
         steps = _as_int(steps, 40, 1, 100, "steps")
+        if steps < 2:
+            _fix("steps", f"{steps} -> 2（Qwen-Image-2.1 至少 2 步）")
+            steps = 2
         seed = _as_int(seed, 42, 0, 2**31 - 1, "seed")
         output_resolution = _snap32(_as_int(output_resolution, 1024, 256, 2048, "output_resolution"), "output_resolution")
         if scheduler not in SCHEDULERS:
