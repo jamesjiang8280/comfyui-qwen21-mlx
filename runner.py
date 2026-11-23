@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import logging
 import os
 import queue
 import subprocess
@@ -39,6 +40,14 @@ _PYTHON_CACHE: str | None = None
 _WORKERS: dict[str, "Worker"] = {}
 _LOCKS: dict[str, threading.Lock] = {}
 _REGISTRY_LOCK = threading.Lock()
+
+
+logger = logging.getLogger("qwen21-mlx")
+
+
+def _say(message: str, **_) -> None:
+    """Log through logging so the line reaches the terminal, comfyui.log and the UI console."""
+    logger.info(message)
 
 
 BAR_WIDTH = 24
@@ -109,7 +118,7 @@ def find_python() -> str:
             continue
         if _probe(python):
             _PYTHON_CACHE = python
-            print(f"[qwen21-mlx] mflux 解释器: {python}", flush=True)
+            _say(f"[qwen21-mlx] mflux 解释器: {python}", flush=True)
             return python
 
     raise Qwen21RunError(
@@ -190,7 +199,7 @@ class Worker:
 
     def _start(self) -> None:
         args = self._args()
-        print(f"[qwen21-mlx] 启动 MLX worker: {Path(self.model).name}", flush=True)
+        _say(f"[qwen21-mlx] 启动 MLX worker: {Path(self.model).name}", flush=True)
         self._log_file = open(self.log_path, "ab", buffering=0)
         self.proc = subprocess.Popen(
             args,
@@ -246,7 +255,7 @@ class Worker:
             if kind == "ready":
                 self.load_seconds = frame.get("load_seconds")
                 self.peak_bytes = int(frame.get("peak_bytes") or 0)
-                print(
+                _say(
                     f"[qwen21-mlx] 模型就绪：{Path(self.model).name} "
                     f"(quant={frame.get('bits') or 'auto'}, "
                     f"载入 {frame.get('load_seconds')}s, "
@@ -259,7 +268,7 @@ class Worker:
                     f"模型加载失败：{frame.get('message')}\n{frame.get('traceback', '')}"
                 )
             if kind == "status" and frame.get("phase") == "loading":
-                print("[qwen21-mlx] 正在加载 Qwen-Image-2.1 权重（首次约 1-2 分钟）...", flush=True)
+                _say("[qwen21-mlx] 正在加载 Qwen-Image-2.1 权重（首次约 1-2 分钟）...", flush=True)
 
     def _death_message(self) -> str:
         code = self.proc.poll() if self.proc else None
@@ -316,7 +325,7 @@ class Worker:
                 if first_step_at is None:
                     first_step_at = now
                 last_total = max(last_total, total)
-                print(f"[qwen21-mlx] 采样 {render_progress(step, total, rate)}", flush=True)
+                _say(f"[qwen21-mlx] 采样 {render_progress(step, total, rate)}", flush=True)
                 if on_progress:
                     on_progress(step, total)
                 continue
@@ -330,10 +339,10 @@ class Worker:
                 }.get(str(phase), str(phase))
                 if phase not in announced:
                     announced.add(str(phase))
-                    print(f"[qwen21-mlx] {label}", flush=True)
+                    _say(f"[qwen21-mlx] {label}", flush=True)
                 if phase == "decoding" and last_total and first_step_at:
                     rate = (time.time() - first_step_at) / (last_total - 1) if last_total > 1 else None
-                    print(f"[qwen21-mlx] 采样 {render_progress(last_total, last_total, rate)}", flush=True)
+                    _say(f"[qwen21-mlx] 采样 {render_progress(last_total, last_total, rate)}", flush=True)
                 continue
 
             if frame.get("id") not in (None, request_id):
@@ -345,7 +354,7 @@ class Worker:
                 )
             if kind == "result":
                 self.peak_bytes = max(self.peak_bytes, int(frame.get("peak_bytes") or 0))
-                print(
+                _say(
                     f"[qwen21-mlx] 完成 {frame.get('width')}x{frame.get('height')} "
                     f"用时 {frame.get('elapsed')}s，MLX 峰值 {self.peak_bytes / 1e9:.1f} GB",
                     flush=True,
@@ -353,7 +362,7 @@ class Worker:
                 return frame
 
             if verbose:
-                print(f"[qwen21-mlx] {frame}", flush=True)
+                _say(f"[qwen21-mlx] {frame}", flush=True)
 
     def stop(self) -> None:
         if not self.proc:
