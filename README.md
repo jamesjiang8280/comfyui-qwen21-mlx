@@ -26,6 +26,7 @@ ComfyUI 自带的 Qwen 节点跑 PyTorch/MPS；这里把扩散计算交给 MLX�
 | **Qwen-Image-2.1 MLX 图像编辑** | 1~10 张参考图 + 指令，可选 mask（auto_mask / 扩写 / 自检取决于权重是否有 lm_head），输出 IMAGE + alpha MASK |
 | **Qwen-Image-2.1 MLX LoRA 加载器** | 单个 LoRA：选 `models/loras` 下的 `.safetensors`，调强度/开关/是否烘焙 |
 | **Qwen-Image-2.1 MLX LoRA Stack** | 一个节点叠 4 个 LoRA（空槽=`none`），可串联多个 Stack 节点继续叠 |
+| **Qwen-Image-2.1 MLX EasyCache** | 配置进/配置出，打开 mflux 的跳步缓存；接在加载器与文生图/编辑之间 |
 | **Qwen-Image-2.1 MLX 释放内存** | 停止常驻 worker，交还统一内存（换模型/跑别的负载前用） |
 
 ## 安装
@@ -93,6 +94,17 @@ user/default/workflows/Qwen Image 2.1 文生、图像编辑一体化.json
 - 编辑：参考图接 `image_1`，多图接 `image_2`~`image_10`；`width/height=0` 表示按参考图比例自动。
 - 局部修改：MASK 接 `mask`（白=重绘，黑=保留）。本权重不支持 `auto_mask`。
 - `strength=1.0` 完全按指令重画；`0.6~0.8` 保留更多原图，同时跳过前段高噪声步数（更快）。
+
+## EasyCache（可选）
+
+工作流里已经串好：`加载器 → LoRA Stack → EasyCache → 文生图 / 编辑`，默认**关闭**。
+
+它对应 mflux 的 `use_step_cache` + `step_cache_threshold`，不是 ComfyUI 原版 EasyCache 的逐 timestep 复用：
+
+- **只有 `reuse_threshold`**，没有 `start_percent` / `end_percent`（mflux 没暴露这个范围）；
+- **少于 10 步不生效**（mflux 的硬性下限），8 步 turbo 下打开也没意义；跑 40 步基础模型才有收益；
+- 打开后会**覆盖**编辑节点自带的 `use_step_cache` / `step_cache_threshold` 两个旧参数，避免两处打架；
+- 40 步建议从 `0.12` 起步；越大跳步越多、越快，画面差异也越明显。
 
 ## 实测（M5 / 24GB，4bit，磁盘缓存已热）
 

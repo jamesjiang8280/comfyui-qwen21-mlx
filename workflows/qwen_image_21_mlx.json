@@ -1,13 +1,13 @@
 {
-  "last_node_id": 9,
-  "last_link_id": 6,
+  "last_node_id": 10,
+  "last_link_id": 7,
   "nodes": [
     {
       "id": 1,
       "type": "Qwen21MlxLoader",
       "pos": [
         40,
-        60
+        40
       ],
       "size": [
         460,
@@ -46,7 +46,7 @@
       "type": "Qwen21MlxLoraStack",
       "pos": [
         40,
-        400
+        380
       ],
       "size": [
         460,
@@ -67,8 +67,7 @@
           "name": "qwen21_mlx_model",
           "type": "QWEN21_MLX_CONFIG",
           "links": [
-            2,
-            3
+            2
           ]
         }
       ],
@@ -91,17 +90,17 @@
     },
     {
       "id": 3,
-      "type": "Qwen21MlxTextToImage",
+      "type": "Qwen21MlxEasyCache",
       "pos": [
-        580,
-        20
+        40,
+        800
       ],
       "size": [
-        440,
-        440
+        460,
+        220
       ],
       "flags": {},
-      "order": 4,
+      "order": 2,
       "mode": 0,
       "inputs": [
         {
@@ -112,10 +111,50 @@
       ],
       "outputs": [
         {
+          "name": "qwen21_mlx_model",
+          "type": "QWEN21_MLX_CONFIG",
+          "links": [
+            3,
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Qwen21MlxEasyCache"
+      },
+      "widgets_values": [
+        false,
+        0.12
+      ],
+      "title": "③ EasyCache（≥10 步才有效，默认关）"
+    },
+    {
+      "id": 4,
+      "type": "Qwen21MlxTextToImage",
+      "pos": [
+        600,
+        20
+      ],
+      "size": [
+        440,
+        440
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "qwen21_mlx_model",
+          "type": "QWEN21_MLX_CONFIG",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
           "name": "image",
           "type": "IMAGE",
           "links": [
-            5
+            6
           ]
         }
       ],
@@ -136,13 +175,13 @@
         false,
         0.12
       ],
-      "title": "③ 文生图"
+      "title": "④ 文生图"
     },
     {
-      "id": 4,
+      "id": 5,
       "type": "SaveImage",
       "pos": [
-        1080,
+        1100,
         60
       ],
       "size": [
@@ -150,13 +189,13 @@
         480
       ],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 5
+          "link": 6
         }
       ],
       "outputs": [],
@@ -169,29 +208,29 @@
       "title": "保存（文生图）"
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "Qwen21MlxEdit",
       "pos": [
-        580,
-        700
+        600,
+        1060
       ],
       "size": [
         520,
         800
       ],
       "flags": {},
-      "order": 2,
+      "order": 3,
       "mode": 0,
       "inputs": [
         {
           "name": "qwen21_mlx_model",
           "type": "QWEN21_MLX_CONFIG",
-          "link": 3
+          "link": 4
         },
         {
           "name": "image_1",
           "type": "IMAGE",
-          "link": 4
+          "link": 5
         },
         {
           "name": "image_2",
@@ -249,7 +288,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            6
+            7
           ]
         },
         {
@@ -281,21 +320,21 @@
         1,
         1024
       ],
-      "title": "④ 图像编辑（指令 + 参考图）"
+      "title": "⑤ 图像编辑（指令 + 参考图）"
     },
     {
-      "id": 6,
+      "id": 7,
       "type": "LoadImage",
       "pos": [
         40,
-        740
+        1060
       ],
       "size": [
         440,
         560
       ],
       "flags": {},
-      "order": 3,
+      "order": 4,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -303,7 +342,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            4
+            5
           ]
         },
         {
@@ -322,24 +361,24 @@
       "title": "参考图（可换）"
     },
     {
-      "id": 7,
+      "id": 8,
       "type": "SaveImage",
       "pos": [
         1160,
-        740
+        1100
       ],
       "size": [
         420,
         480
       ],
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 6
+          "link": 7
         }
       ],
       "outputs": [],
@@ -352,38 +391,15 @@
       "title": "保存（编辑）"
     },
     {
-      "id": 8,
-      "type": "Note",
-      "pos": [
-        40,
-        1340
-      ],
-      "size": [
-        660,
-        320
-      ],
-      "flags": {},
-      "order": 8,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "properties": {
-        "Node name for S&R": "Note"
-      },
-      "widgets_values": [
-        "Qwen-Image-2.1 MLX 一体化工作流\n\n• 文生图与编辑共用同一个常驻 MLX worker：首次加载权重约 1 分钟，之后每张免加载\n• 默认接 8 步 turbo LoRA（Qwen-image-2.1-turbo8_lora_8step）：1024² 约 1.5~2 分钟；\n  把 LoRA Stack 的 enabled 关掉即回到 40 步基础模型（约 5.5~6 分钟）\n• LoRA Stack 一个节点最多 4 个槽（空槽=none）；要更多就再串一个 Stack 节点\n• 编辑：写清「改什么 + 保留什么」；strength 1.0 完全按指令重画，0.6~0.8 保留更多原图\n• 多参考图：接 image_2 ~ image_10（最多 10 张，最后一张决定输出比例）\n• 局部修改：把 MASK 接到 mask（白=重绘，黑=保留）\n• 只跑一条链路时，选中另一条分支按 Ctrl+M 静音，避免白跑一次生成"
-      ]
-    },
-    {
       "id": 9,
       "type": "Note",
       "pos": [
-        740,
-        1340
+        40,
+        1960
       ],
       "size": [
-        620,
-        320
+        680,
+        340
       ],
       "flags": {},
       "order": 9,
@@ -394,7 +410,30 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "模型与能力\n\nJoyFusionAI/Qwen-Image-2.1-Edit-MLX-4bit（约 9.6GB，含 Qwen3-VL 视觉塔）\n路径：~/ComfyUI-Shared/models/MLX/\n\n• 只有 text_encoder 里带 visual.* 的 Edit 包才能做指令编辑\n• 这个 4bit 包没有 lm_head：指令编辑正常，但 auto_mask / enhance_prompt / verify\n  不可用（编辑节点会提前拦截并提示），局部修改请用手动 mask\n• 换 LoRA：改 LoRA Stack 的 lora_1~lora_4；bake=false 是运行时适配器，显存更省\n• 日志：custom_nodes/comfyui-qwen21-mlx/logs/worker-*.log"
+        "Qwen-Image-2.1 MLX 一体化工作流\n\n• 文生图与编辑共用同一个常驻 MLX worker：首次加载权重约 1 分钟，之后每张免加载\n• 默认接 8 步 turbo LoRA（Qwen-image-2.1-turbo8_lora_8step）：1024² 约 1.5~2 分钟；\n  把 LoRA Stack 的 enabled 关掉即回到 40 步基础模型（约 5.5~6 分钟）\n• LoRA Stack 一个节点最多 4 个槽（空槽=none）；要更多就再串一个 Stack 节点\n• EasyCache 默认关闭：mflux 只在 ≥10 步时跳步，8 步 turbo 用不上；\n  跑 40 步基础模型时打开它（threshold 0.12 起步，越大越快也越糊）\n• 编辑：写清「改什么 + 保留什么」；strength 1.0 完全按指令重画，0.6~0.8 保留更多原图\n• 多参考图：接 image_2 ~ image_10（最多 10 张，最后一张决定输出比例）\n• 局部修改：把 MASK 接到 mask（白=重绘，黑=保留）\n• 只跑一条链路时，选中另一条分支按 Ctrl+M 静音，避免白跑一次生成"
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Note",
+      "pos": [
+        760,
+        1960
+      ],
+      "size": [
+        620,
+        340
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "模型与能力\n\nJoyFusionAI/Qwen-Image-2.1-Edit-MLX-4bit（约 9.6GB，含 Qwen3-VL 视觉塔）\n路径：~/ComfyUI-Shared/models/MLX/\n\n• 只有 text_encoder 里带 visual.* 的 Edit 包才能做指令编辑\n• 这个 4bit 包没有 lm_head：指令编辑正常，但 auto_mask / enhance_prompt / verify\n  不可用（编辑节点会提前拦截并提示），局部修改请用手动 mask\n• 换 LoRA：改 LoRA Stack 的 lora_1~lora_4；bake=false 是运行时适配器，显存更省\n• EasyCache 只接受 threshold，没有 ComfyUI 原版的 start/end percent\n• 日志：custom_nodes/comfyui-qwen21-mlx/logs/worker-*.log"
       ]
     }
   ],
@@ -417,33 +456,41 @@
     ],
     [
       3,
-      2,
+      3,
       0,
-      5,
+      4,
       0,
       "QWEN21_MLX_CONFIG"
     ],
     [
       4,
+      3,
+      0,
       6,
       0,
+      "QWEN21_MLX_CONFIG"
+    ],
+    [
       5,
+      7,
+      0,
+      6,
       1,
       "IMAGE"
     ],
     [
-      5,
-      3,
-      0,
+      6,
       4,
+      0,
+      5,
       0,
       "IMAGE"
     ],
     [
-      6,
-      5,
-      0,
       7,
+      6,
+      0,
+      8,
       0,
       "IMAGE"
     ]
@@ -455,8 +502,8 @@
       "bounding": [
         560,
         -40,
-        960,
-        600
+        980,
+        620
       ],
       "color": "#3f789e",
       "font_size": 24,
@@ -467,8 +514,8 @@
       "title": "图像编辑（1~10 张参考图 + 可选 mask）",
       "bounding": [
         0,
-        640,
-        1600,
+        1000,
+        1620,
         900
       ],
       "color": "#8a5a3c",
@@ -480,11 +527,24 @@
       "title": "LoRA Stack（可选，可串联）",
       "bounding": [
         0,
-        370,
+        350,
         520,
         430
       ],
       "color": "#4a6b3a",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "EasyCache（可选，≥10 步）",
+      "bounding": [
+        0,
+        790,
+        520,
+        250
+      ],
+      "color": "#6b4a7a",
       "font_size": 24,
       "flags": {}
     }

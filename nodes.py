@@ -147,6 +147,19 @@ def _repair_stale_edit_widgets(
     return "", kv, step, max(0.0, min(1.0, threshold)), enhance, verify_flag, max(0, min(5, retries))
 
 
+def _cache_overrides(cfg: dict[str, Any], use_step_cache, threshold):
+    """An upstream EasyCache node wins over the node's own step-cache widgets."""
+    cfg = cfg or {}
+    if "step_cache" in cfg:
+        use_step_cache = bool(cfg["step_cache"])
+    if "step_cache_threshold" in cfg:
+        try:
+            threshold = float(cfg["step_cache_threshold"])
+        except (TypeError, ValueError):
+            pass
+    return use_step_cache, threshold
+
+
 def _repair_stale_t2i_widgets(scheduler, use_kv_cache, use_step_cache, step_cache_threshold):
     if isinstance(scheduler, str):
         return scheduler, use_kv_cache, use_step_cache, step_cache_threshold
@@ -542,6 +555,11 @@ class Qwen21MlxTextToImage:
         scheduler, use_kv_cache, use_step_cache, step_cache_threshold = _repair_stale_t2i_widgets(
             scheduler, use_kv_cache, use_step_cache, step_cache_threshold
         )
+        use_step_cache, step_cache_threshold = _cache_overrides(
+            qwen21_mlx_model or {}, use_step_cache, step_cache_threshold
+        )
+        if use_step_cache and steps < 10:
+            print("[qwen21-mlx] EasyCache 已开，但 mflux 在少于 10 步时不跳步（本次不会加速）", flush=True)
         if scheduler not in SCHEDULERS:
             _fix("scheduler", f"{scheduler!r} -> linear")
             scheduler = "linear"
@@ -722,6 +740,9 @@ class Qwen21MlxEdit:
         ) = _repair_stale_edit_widgets(
             auto_mask, use_kv_cache, use_step_cache, step_cache_threshold, enhance_prompt, verify, verify_retries
         )
+        use_step_cache, step_cache_threshold = _cache_overrides(
+            cfg, use_step_cache, step_cache_threshold
+        )
         auto_mask = _as_str(auto_mask, "", "auto_mask").strip()
         if not prompt.strip():
             raise Qwen21RunError("prompt 为空：请写下要做的编辑。")
@@ -749,6 +770,8 @@ class Qwen21MlxEdit:
         if steps < 2:
             _fix("steps", f"{steps} -> 2（Qwen-Image-2.1 至少 2 步）")
             steps = 2
+        if use_step_cache and steps < 10:
+            print("[qwen21-mlx] EasyCache 已开，但 mflux 在少于 10 步时不跳步（本次不会加速）", flush=True)
         seed = _as_int(seed, 42, 0, 2**31 - 1, "seed")
         output_resolution = _snap32(_as_int(output_resolution, 1024, 256, 2048, "output_resolution"), "output_resolution")
         if scheduler not in SCHEDULERS:
@@ -903,6 +926,56 @@ class Qwen21MlxLoraLoader:
         return (cfg,)
 
 
+class Qwen21MlxEasyCache:
+    """Enable mflux's step cache for Qwen-Image-2.1 MLX (config in, config out)."""
+
+    @classmethod
+    def INPUT_TYPES(cls) -> dict[str, Any]:
+        return {
+            "required": {
+                "qwen21_mlx_model": ("QWEN21_MLX_CONFIG",),
+                "enabled": (
+                    "BOOLEAN",
+                    {"default": True, "tooltip": "关闭=直通，便于对比速度与画质"},
+                ),
+                "reuse_threshold": (
+                    "FLOAT",
+                    {
+                        "default": 0.12,
+                        "min": 0.0,
+                        "max": 3.0,
+                        "step": 0.01,
+                        "tooltip": "越大跳步越多（更快、更易糊）；0 等于关闭。mflux 默认 0.12",
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("QWEN21_MLX_CONFIG",)
+    RETURN_NAMES = ("qwen21_mlx_model",)
+    FUNCTION = "apply"
+    CATEGORY = CATEGORY
+
+    def apply(
+        self,
+        qwen21_mlx_model: dict[str, Any],
+        enabled: bool = True,
+        reuse_threshold: float = 0.12,
+    ) -> tuple[dict[str, Any]]:
+        cfg = dict(qwen21_mlx_model or {})
+        threshold = max(0.0, min(3.0, float(reuse_threshold)))
+        cfg["step_cache"] = bool(enabled)
+        cfg["step_cache_threshold"] = threshold
+        if enabled:
+            print(
+                f"[qwen21-mlx] EasyCache: threshold={threshold:.3f}（mflux 在 ≥10 步时跳过相似步）",
+                flush=True,
+            )
+        else:
+            print("[qwen21-mlx] EasyCache 已关闭（直通）", flush=True)
+        return (cfg,)
+
+
 class Qwen21MlxLoraStack:
     """Stack up to four LoRAs in one node; chain nodes for more."""
 
@@ -1013,6 +1086,7 @@ NODE_CLASS_MAPPINGS = {
     "Qwen21MlxEdit": Qwen21MlxEdit,
     "Qwen21MlxLoraLoader": Qwen21MlxLoraLoader,
     "Qwen21MlxLoraStack": Qwen21MlxLoraStack,
+    "Qwen21MlxEasyCache": Qwen21MlxEasyCache,
     "Qwen21MlxFreeMemory": Qwen21MlxFreeMemory,
 }
 
@@ -1022,6 +1096,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Qwen21MlxEdit": "Qwen-Image-2.1 MLX 图像编辑",
     "Qwen21MlxLoraLoader": "Qwen-Image-2.1 MLX LoRA 加载器",
     "Qwen21MlxLoraStack": "Qwen-Image-2.1 MLX LoRA Stack",
+    "Qwen21MlxEasyCache": "Qwen-Image-2.1 MLX EasyCache",
     "Qwen21MlxFreeMemory": "Qwen-Image-2.1 MLX 释放内存",
 }
 
