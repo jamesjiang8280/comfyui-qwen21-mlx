@@ -35,6 +35,7 @@ Defaults that matter
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -64,6 +65,14 @@ except Exception:  # pragma: no cover
     folder_paths = None
 
 
+logger = logging.getLogger("qwen21-mlx")
+
+
+def _say(message: str, **_) -> None:
+    """Log through logging so lines reach the terminal and the UI console panel."""
+    logger.info(message)
+
+
 VERSION = "1.2.1"
 CATEGORY = "Qwen21 MLX"
 QUANTS = ["auto", "4", "8"]
@@ -82,7 +91,7 @@ def _fix(name: str, msg: str) -> None:
 
 def _report_fixes() -> None:
     if _FIXES:
-        print("[qwen21-mlx] 参数已自动规整：" + "; ".join(_FIXES), flush=True)
+        _say("[qwen21-mlx] 参数已自动规整：" + "; ".join(_FIXES), flush=True)
         _FIXES.clear()
 
 
@@ -137,7 +146,7 @@ def _repair_stale_edit_widgets(
     enhance = bool(step_cache_threshold)
     verify_flag = bool(enhance_prompt)
     retries = int(verify) if isinstance(verify, (int, float)) else 0  # bool is int: True -> 1
-    print(
+    _say(
         "[qwen21-mlx] 检测到旧版工作流的 widget 顺序（参数错位），已自动还原："
         f"auto_mask=关闭, use_kv_cache={kv}, use_step_cache={step}, "
         f"threshold={threshold:.2f}, verify={verify_flag}, verify_retries={max(0, min(5, retries))}。"
@@ -166,7 +175,7 @@ def _repair_stale_t2i_widgets(scheduler, use_kv_cache, use_step_cache, step_cach
     kv = bool(scheduler)
     step = bool(use_kv_cache)
     threshold = float(use_step_cache) if isinstance(use_step_cache, (int, float)) and not isinstance(use_step_cache, bool) else 0.12
-    print(
+    _say(
         "[qwen21-mlx] 文生图节点检测到旧版 widget 顺序，已自动还原（scheduler=linear）。"
         " 建议重新打开磁盘上的最新工作流。",
         flush=True,
@@ -463,20 +472,20 @@ class Qwen21MlxLoader:
         capability, vision_chat = model_capability(path)
         cfg.update(model=str(path), capability=capability, vision_chat=vision_chat, label=path.name)
 
-        print(
+        _say(
             f"[qwen21-mlx] v{VERSION} | model={path.name} | capability={capability} | "
             f"vision_chat={'yes' if vision_chat else 'no'} | "
             f"quant={quantization} | resident={bool(keep_resident)} | python={cfg['python']}",
             flush=True,
         )
         if not vision_chat:
-            print(
+            _say(
                 "[qwen21-mlx] 该权重缺 text_encoder 的 lm_head：指令编辑可用，"
                 "但 auto_mask / enhance_prompt / verify 不可用（节点会提前拦截）。",
                 flush=True,
             )
         if capability != "edit":
-            print(
+            _say(
                 "[qwen21-mlx] 该包缺少 Qwen3-VL 视觉塔（visual.*），只能文生图/普通重绘；"
                 "图像编辑节点会拒绝运行。",
                 flush=True,
@@ -558,8 +567,6 @@ class Qwen21MlxTextToImage:
         use_step_cache, step_cache_threshold = _cache_overrides(
             qwen21_mlx_model or {}, use_step_cache, step_cache_threshold
         )
-        if use_step_cache and steps < 10:
-            print("[qwen21-mlx] EasyCache 已开，但 mflux 在少于 10 步时不跳步（本次不会加速）", flush=True)
         if scheduler not in SCHEDULERS:
             _fix("scheduler", f"{scheduler!r} -> linear")
             scheduler = "linear"
@@ -569,7 +576,7 @@ class Qwen21MlxTextToImage:
         if guidance > 1.0 and not negative_prompt.strip():
             # mflux rejects guidance>1 without an explicit negative prompt.
             negative_prompt = ""
-            print("[qwen21-mlx] guidance>1：负向提示词为空字符串（等价于不做负向引导）", flush=True)
+            _say("[qwen21-mlx] guidance>1：负向提示词为空字符串（等价于不做负向引导）", flush=True)
         _report_fixes()
 
         params = {
@@ -770,8 +777,6 @@ class Qwen21MlxEdit:
         if steps < 2:
             _fix("steps", f"{steps} -> 2（Qwen-Image-2.1 至少 2 步）")
             steps = 2
-        if use_step_cache and steps < 10:
-            print("[qwen21-mlx] EasyCache 已开，但 mflux 在少于 10 步时不跳步（本次不会加速）", flush=True)
         seed = _as_int(seed, 42, 0, 2**31 - 1, "seed")
         output_resolution = _snap32(_as_int(output_resolution, 1024, 256, 2048, "output_resolution"), "output_resolution")
         if scheduler not in SCHEDULERS:
@@ -810,7 +815,7 @@ class Qwen21MlxEdit:
                 _save_mask(mask, mask_path)
 
             if mask is not None and auto_mask:
-                print("[qwen21-mlx] mask 与 auto_mask 同时存在：mflux 会忽略 auto_mask", flush=True)
+                _say("[qwen21-mlx] mask 与 auto_mask 同时存在：mflux 会忽略 auto_mask", flush=True)
 
             params = {
                 "prompt": prompt,
@@ -849,7 +854,7 @@ class Qwen21MlxEdit:
                     except Exception:
                         pass
 
-            print(
+            _say(
                 f"[qwen21-mlx] 编辑：{len(ref_paths)} 张参考图, {width_i or 'auto'}x{height_i or 'auto'}, "
                 f"{steps} 步, strength={strength}, scheduler={scheduler}",
                 flush=True,
@@ -910,7 +915,7 @@ class Qwen21MlxLoraLoader:
         if not enabled or not (lora_name or "").strip():
             for key in ("lora_paths", "lora_scales", "lora_bake"):
                 cfg.pop(key, None)
-            print("[qwen21-mlx] LoRA 已禁用，直通基础模型", flush=True)
+            _say("[qwen21-mlx] LoRA 已禁用，直通基础模型", flush=True)
             return (cfg,)
 
         path = resolve_lora(lora_name)
@@ -918,7 +923,7 @@ class Qwen21MlxLoraLoader:
             raise Qwen21RunError(f"LoRA 文件不存在：{path}")
         scale = float(strength)
         cfg.update(lora_paths=[str(path)], lora_scales=[scale], lora_bake=bool(bake))
-        print(
+        _say(
             f"[qwen21-mlx] LoRA: {path.name} (scale={scale}, "
             f"{'烘焙' if bake else '运行时适配器'}) -> worker 将重新加载模型",
             flush=True,
@@ -945,7 +950,7 @@ class Qwen21MlxEasyCache:
                         "min": 0.0,
                         "max": 3.0,
                         "step": 0.01,
-                        "tooltip": "越大跳步越多（更快、更易糊）；0 等于关闭。mflux 默认 0.12",
+                        "tooltip": "越大跳步越多（更快、差异更明显）；0 等于不跳。8 步下 0.2 往往只跳末尾几步，输出几乎不变",
                     },
                 ),
             },
@@ -967,12 +972,12 @@ class Qwen21MlxEasyCache:
         cfg["step_cache"] = bool(enabled)
         cfg["step_cache_threshold"] = threshold
         if enabled:
-            print(
-                f"[qwen21-mlx] EasyCache: threshold={threshold:.3f}（mflux 在 ≥10 步时跳过相似步）",
+            _say(
+                f"[qwen21-mlx] EasyCache: threshold={threshold:.3f}（跳过变化最小的采样步，完成时会报告跳了几步）",
                 flush=True,
             )
         else:
-            print("[qwen21-mlx] EasyCache 已关闭（直通）", flush=True)
+            _say("[qwen21-mlx] EasyCache 已关闭（直通）", flush=True)
         return (cfg,)
 
 
@@ -1022,7 +1027,7 @@ class Qwen21MlxLoraStack:
     ) -> tuple[dict[str, Any]]:
         cfg = dict(qwen21_mlx_model or {})
         if not enabled:
-            print("[qwen21-mlx] LoRA Stack 已禁用，直通上游配置", flush=True)
+            _say("[qwen21-mlx] LoRA Stack 已禁用，直通上游配置", flush=True)
             return (cfg,)
 
         paths = [str(p) for p in (cfg.get("lora_paths") or [])]
@@ -1046,7 +1051,7 @@ class Qwen21MlxLoraStack:
 
         cfg.update(lora_paths=paths, lora_scales=scales, lora_bake=bool(bake))
         summary = ", ".join(f"{Path(p).name}@{s:g}" for p, s in zip(paths, scales)) or "无"
-        print(
+        _say(
             f"[qwen21-mlx] LoRA Stack: {len(paths)} 个 ({summary}), "
             f"{'烘焙' if bake else '运行时适配器'} -> worker 将重新加载模型",
             flush=True,
@@ -1076,7 +1081,7 @@ class Qwen21MlxFreeMemory:
         match = (match or "").strip()
         stopped = free_workers(None if unload_all or not match else match)
         status = f"已停止 {stopped} 个 MLX worker"
-        print(f"[qwen21-mlx] {status}", flush=True)
+        _say(f"[qwen21-mlx] {status}", flush=True)
         return (status,)
 
 
@@ -1100,4 +1105,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Qwen21MlxFreeMemory": "Qwen-Image-2.1 MLX 释放内存",
 }
 
-print(f"[qwen21-mlx] nodes v{VERSION} loaded", flush=True)
+_say(f"[qwen21-mlx] nodes v{VERSION} loaded", flush=True)

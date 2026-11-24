@@ -126,7 +126,7 @@
         false,
         0.12
       ],
-      "title": "③ EasyCache（≥10 步才有效，默认关）"
+      "title": "③ EasyCache（可选，默认关）"
     },
     {
       "id": 4,
@@ -410,7 +410,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "Qwen-Image-2.1 MLX 一体化工作流\n\n• 文生图与编辑共用同一个常驻 MLX worker：首次加载权重约 1 分钟，之后每张免加载\n• 默认接 8 步 turbo LoRA（Qwen-image-2.1-turbo8_lora_8step）：1024² 约 1.5~2 分钟；\n  把 LoRA Stack 的 enabled 关掉即回到 40 步基础模型（约 5.5~6 分钟）\n• LoRA Stack 一个节点最多 4 个槽（空槽=none）；要更多就再串一个 Stack 节点\n• EasyCache 默认关闭：mflux 只在 ≥10 步时跳步，8 步 turbo 用不上；\n  跑 40 步基础模型时打开它（threshold 0.12 起步，越大越快也越糊）\n• 编辑：写清「改什么 + 保留什么」；strength 1.0 完全按指令重画，0.6~0.8 保留更多原图\n• 多参考图：接 image_2 ~ image_10（最多 10 张，最后一张决定输出比例）\n• 局部修改：把 MASK 接到 mask（白=重绘，黑=保留）\n• 只跑一条链路时，选中另一条分支按 Ctrl+M 静音，避免白跑一次生成"
+        "Qwen-Image-2.1 MLX 一体化工作流\n\n• 文生图与编辑共用同一个常驻 MLX worker：首次加载权重约 1 分钟，之后每张免加载\n• 默认接 8 步 turbo LoRA（Qwen-image-2.1-turbo8_lora_8step）：1024² 约 1.5~2 分钟；\n  把 LoRA Stack 的 enabled 关掉即回到 40 步基础模型（约 5.5~6 分钟）\n• LoRA Stack 一个节点最多 4 个槽（空槽=none）；要更多就再串一个 Stack 节点\n• EasyCache 默认关闭：打开后按阈值跳过变化最小的采样步（8 步也能生效）；\n  threshold 0.12~0.2 通常只动末尾几步，0.5+ 差异才明显；完成时日志会报跳步数\n• 编辑：写清「改什么 + 保留什么」；strength 1.0 完全按指令重画，0.6~0.8 保留更多原图\n• 多参考图：接 image_2 ~ image_10（最多 10 张，最后一张决定输出比例）\n• 局部修改：把 MASK 接到 mask（白=重绘，黑=保留）\n• 只跑一条链路时，选中另一条分支按 Ctrl+M 静音，避免白跑一次生成"
       ]
     },
     {
@@ -537,7 +537,7 @@
     },
     {
       "id": 4,
-      "title": "EasyCache（可选，≥10 步）",
+      "title": "EasyCache（可选）",
       "bounding": [
         0,
         790,

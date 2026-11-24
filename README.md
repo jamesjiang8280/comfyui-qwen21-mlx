@@ -102,9 +102,12 @@ user/default/workflows/Qwen Image 2.1 文生、图像编辑一体化.json
 它对应 mflux 的 `use_step_cache` + `step_cache_threshold`，不是 ComfyUI 原版 EasyCache 的逐 timestep 复用：
 
 - **只有 `reuse_threshold`**，没有 `start_percent` / `end_percent`（mflux 没暴露这个范围）；
-- **少于 10 步不生效**（mflux 的硬性下限），8 步 turbo 下打开也没意义；跑 40 步基础模型才有收益；
-- 打开后会**覆盖**编辑节点自带的 `use_step_cache` / `step_cache_threshold` 两个旧参数，避免两处打架；
-- 40 步建议从 `0.12` 起步；越大跳步越多、越快，画面差异也越明显。
+- 节点会调用 `StepCache` 的跳步逻辑：连续几步的 block-0 变化累计低于阈值时，直接复用上一步的隐状态；
+- **mflux 默认在 <10 步时禁用**，本节点为了适配 8 步 turbo，把下限降到 2 步（否则这个节点纯属摆设）；
+- 打开后会**覆盖**编辑节点自带的 `use_step_cache` / `step_cache_threshold`；
+- 结束时控制台会给出 `EasyCache: 跳过 N/M 个去噪步`；若一直是 0，说明阈值太保守；
+- 阈值越高跳得越多。8 步下 0.12~0.2 通常只跳末尾几步（输出可能像素级一致，但耗时略降）；
+  想要肉眼可见的差异，试 0.5~0.8。
 
 ## 实测（M5 / 24GB，4bit，磁盘缓存已热）
 

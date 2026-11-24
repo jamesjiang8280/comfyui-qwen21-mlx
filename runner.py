@@ -359,6 +359,16 @@ class Worker:
                     f"用时 {frame.get('elapsed')}s，MLX 峰值 {self.peak_bytes / 1e9:.1f} GB",
                     flush=True,
                 )
+                calls = int(frame.get("step_cache_calls") or 0)
+                if calls:
+                    skips = int(frame.get("step_cache_skips") or 0)
+                    if skips:
+                        _say(f"[qwen21-mlx] EasyCache: 跳过 {skips}/{calls} 个去噪步", flush=True)
+                    else:
+                        _say(
+                            f"[qwen21-mlx] EasyCache: 0/{calls} 步被跳过（阈值太保守，可调高 reuse_threshold）",
+                            flush=True,
+                        )
                 return frame
 
             if verbose:

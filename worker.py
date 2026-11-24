@@ -138,6 +138,37 @@ def _reload_text_encoder(model) -> None:
 # ------------------------------------------------------------------- model ---
 
 
+_STEP_CACHE_STATS = {"calls": 0, "skips": 0}
+
+
+def setup_step_cache() -> None:
+    """Let EasyCache engage below mflux's default floor of 10 steps.
+
+    mflux disables the step cache for runs under StepCache.MIN_STEPS (10) because
+    skipping changes the image.  The ComfyUI node is an explicit opt-in, so the
+    floor moves to 2 and every skip is counted for the completion log.
+    """
+    from mflux.models.common.step_cache.step_cache import StepCache as RunGate
+    from mflux.models.qwen21.model.qwen21_transformer.qwen_image21_transformer import StepCache as QwenCache
+
+    # The run-level floor lives on the shared class; the skipping logic is the
+    # Qwen-specific one.  Both need to agree before the cache can engage.
+    RunGate.MIN_STEPS = 2
+    if getattr(QwenCache, "_qwen21_agent_patched", False):
+        return
+    original = QwenCache.should_skip
+
+    def should_skip(self, signal):
+        skip = original(self, signal)
+        _STEP_CACHE_STATS["calls"] += 1
+        if skip:
+            _STEP_CACHE_STATS["skips"] += 1
+        return skip
+
+    QwenCache.should_skip = should_skip
+    QwenCache._qwen21_agent_patched = True
+
+
 def load_model(args):
     import mlx.core as mx
 
@@ -205,6 +236,8 @@ def generate(model, params: dict, callback: ProgressCallback, keep_text_encoder:
 
     callback.total = 0
     callback.last = -1
+    _STEP_CACHE_STATS["calls"] = 0
+    _STEP_CACHE_STATS["skips"] = 0
 
     image_paths = [str(p) for p in (params.get("image_paths") or []) if p]
     mask_image = params.get("mask_image") or None
@@ -267,6 +300,8 @@ def generate(model, params: dict, callback: ProgressCallback, keep_text_encoder:
         "elapsed": round(elapsed, 2),
         "peak_bytes": peak,
         "max_references": edit_mod.MAX_REFERENCES,
+        "step_cache_calls": _STEP_CACHE_STATS["calls"],
+        "step_cache_skips": _STEP_CACHE_STATS["skips"],
     }
 
 
@@ -306,6 +341,7 @@ def main() -> int:
         args.vae_tiling = True
         args.vae_tile_size = 512
 
+    setup_step_cache()
     try:
         model = load_model(args)
     except Exception as exc:  # noqa: BLE001 - report anything to the node
